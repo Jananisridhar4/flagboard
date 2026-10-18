@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { updateFlagSchema } from "@/lib/validation";
 import { writeAuditLog } from "@/lib/audit";
+import { invalidateFlag } from "@/lib/flag-cache";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -27,6 +28,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
   });
 
   await writeAuditLog(id, "UPDATE", existing, updated);
+  await invalidateFlag(existing.key, existing.environment);
 
   return NextResponse.json(updated);
 }
@@ -41,6 +43,7 @@ export async function DELETE(_request: Request, { params }: Ctx) {
   }
 
   await prisma.flag.delete({ where: { id } });
+  await invalidateFlag(existing.key, existing.environment);
 
   return NextResponse.json({ deleted: true });
 }

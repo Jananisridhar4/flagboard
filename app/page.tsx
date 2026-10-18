@@ -13,6 +13,45 @@ type Flag = {
 
 type Update = { enabled?: boolean; rolloutPercent?: number };
 
+type Snapshot = {
+  name?: string;
+  enabled?: boolean;
+  rolloutPercent?: number;
+};
+
+type AuditLog = {
+  id: string;
+  action: string;
+  oldValue: Snapshot | null;
+  newValue: Snapshot | null;
+  changedBy: string;
+  createdAt: string;
+};
+
+function describe(log: AuditLog): string {
+  const n = log.newValue;
+  const o = log.oldValue;
+
+  if (log.action === "CREATE" && n) {
+    return `Created (${n.enabled ? "ON" : "OFF"}, ${n.rolloutPercent}%)`;
+  }
+
+  if (!n || !o) return log.action;
+
+  const changes: string[] = [];
+  if (o.enabled !== n.enabled) {
+    changes.push(`${o.enabled ? "ON" : "OFF"} → ${n.enabled ? "ON" : "OFF"}`);
+  }
+  if (o.rolloutPercent !== n.rolloutPercent) {
+    changes.push(`${o.rolloutPercent}% → ${n.rolloutPercent}%`);
+  }
+  if (o.name !== n.name) {
+    changes.push(`name: ${o.name} → ${n.name}`);
+  }
+
+  return changes.length ? changes.join(", ") : "Updated";
+}
+
 function FlagRow({
   flag,
   onUpdate,
@@ -21,10 +60,20 @@ function FlagRow({
   onUpdate: (id: string, data: Update) => void;
 }) {
   const [percent, setPercent] = useState(flag.rolloutPercent);
+  const [showHistory, setShowHistory] = useState(false);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
 
   useEffect(() => {
     setPercent(flag.rolloutPercent);
   }, [flag.rolloutPercent]);
+
+  // History open-a irukkum bodhu, flag maarina udane refresh aagum
+  useEffect(() => {
+    if (!showHistory) return;
+    fetch(`/api/flags/${flag.id}/history`)
+      .then((res) => res.json())
+      .then(setLogs);
+  }, [showHistory, flag.id, flag.enabled, flag.rolloutPercent]);
 
   const commit = () => {
     if (percent !== flag.rolloutPercent) {
@@ -65,6 +114,30 @@ function FlagRow({
         />
         <span className="w-12 text-right text-sm font-medium">{percent}%</span>
       </div>
+
+      <button
+        onClick={() => setShowHistory((v) => !v)}
+        className="mt-3 text-sm text-blue-600 underline"
+      >
+        {showHistory ? "Hide history" : "History"}
+      </button>
+
+      {showHistory && (
+        <ul className="mt-3 space-y-2 border-t pt-3 text-sm">
+          {logs.length === 0 && <li className="text-gray-500">No history.</li>}
+          {logs.map((log) => (
+            <li key={log.id} className="flex justify-between gap-4">
+              <span>
+                <span className="font-medium">{log.action}</span> ·{" "}
+                {describe(log)}
+              </span>
+              <span className="whitespace-nowrap text-gray-500">
+                {log.changedBy} · {new Date(log.createdAt).toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }

@@ -73,6 +73,11 @@ export default function Home() {
   const [flags, setFlags] = useState<Flag[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [name, setName] = useState("");
+  const [key, setKey] = useState("");
+  const [environment, setEnvironment] = useState("dev");
+  const [error, setError] = useState("");
+
   async function load() {
     const res = await fetch("/api/flags");
     setFlags(await res.json());
@@ -92,9 +97,72 @@ export default function Home() {
     await load();
   }
 
+  async function createFlag(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+
+    const res = await fetch("/api/flags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, name, environment }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.error ?? data.errors?.[0]?.message ?? "Something went wrong");
+      return;
+    }
+
+    setName("");
+    setKey("");
+    await load();
+  }
+
   return (
     <main className="mx-auto max-w-3xl p-8">
       <h1 className="mb-6 text-3xl font-bold">FlagBoard</h1>
+
+      <form
+        onSubmit={createFlag}
+        className="mb-8 space-y-3 rounded-lg border p-4"
+      >
+        <h2 className="font-semibold">Create flag</h2>
+
+        <div className="flex flex-wrap gap-3">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name (New Checkout)"
+            required
+            className="flex-1 rounded border px-3 py-2"
+          />
+          <input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="key (new-checkout)"
+            required
+            className="flex-1 rounded border px-3 py-2"
+          />
+          <select
+            value={environment}
+            onChange={(e) => setEnvironment(e.target.value)}
+            className="rounded border px-3 py-2"
+          >
+            <option value="dev">dev</option>
+            <option value="staging">staging</option>
+            <option value="prod">prod</option>
+          </select>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <button
+          type="submit"
+          className="rounded bg-black px-4 py-2 text-sm font-medium text-white"
+        >
+          Create
+        </button>
+      </form>
 
       {loading && <p>Loading...</p>}
       {!loading && flags.length === 0 && <p>No flags yet.</p>}

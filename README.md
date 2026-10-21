@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FlagBoard
 
-## Getting Started
+A feature flag dashboard with percentage rollouts, Redis caching and an audit log.
 
-First, run the development server:
+Toggle a feature on or off, or release it to a percentage of users, without redeploying.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Features
+
+- Create, list, update and delete flags per environment (dev / staging / prod)
+- On/off toggle and rollout percentage slider
+- Evaluation API: `GET /api/evaluate/:key?userId=...&env=...`
+- Consistent rollout: the same user always gets the same result
+- Redis cache with invalidation on every change
+- Audit log: every create and update is recorded with old and new values
+- Live demo page that reacts to dashboard changes
+
+## Tech stack
+
+Next.js, TypeScript, Tailwind CSS, Prisma, PostgreSQL, Redis, Zod, Docker
+
+## How rollout works
+
+For a flag with a rollout percentage, a user's bucket is computed like this:
+
+```
+bucket = hash(flagKey + ":" + userId) % 100
+enabled = bucket < rolloutPercent
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- The same user and flag always give the same bucket, so users don't flip between old and new.
+- Increasing 30% to 50% keeps the first 30% users enabled, because buckets don't change.
+- The flag key is part of the hash, so different flags select different users.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Architecture
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+Dashboard (Next.js) -> Flag API -> PostgreSQL (source of truth)
+                                      |
+                                      v
+                                 Redis cache (60s TTL)
+                                      ^
+Client app -> GET /api/evaluate/:key -+
+```
 
-## Learn More
+- Reads go to Redis first. On a miss, the flag is read from PostgreSQL and cached.
+- Every update or delete clears the cached flag.
+- If Redis is down, the API falls back to PostgreSQL. If the flag doesn't exist, it returns `enabled: false`.
 
-To learn more about Next.js, take a look at the following resources:
+## API
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/flags?env=dev` | List flags |
+| POST | `/api/flags` | Create a flag |
+| PATCH | `/api/flags/:id` | Update enabled / rolloutPercent / name |
+| DELETE | `/api/flags/:id` | Delete a flag |
+| GET | `/api/flags/:id/history` | Audit log for a flag |
+| GET | `/api/evaluate/:key?userId=&env=` | Is the flag enabled for this user? |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Run locally
 
-## Deploy on Vercel
+Requires Node.js and Docker.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+git clone https://github.com/Jananisridhar4/flagboard.git
+cd flagboard
+cp .env.example .env
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Fill in `.env`:
+
+```
+DATABASE_URL="postgresql://flagboard:flagboard@localhost:5432/flagboard"
+REDIS_URL="redis://localhost:6379"
+```
+
+Start the database and Redis, then the app:
+
+```bash
+docker compose up -d postgres redis
+npm install
+npx prisma migrate dev
+npm run dev
+```
+
+Open http://localhost:3000 for the dashboard and http://localhost:3000/demo for the demo page.
+
+### Run everything in Docker
+
+```bash
+docker compose up -d --build
+```
+
+The app is available at http://localhost:3001.
+
+## Screenshots
+
+_Add screenshots of the dashboard, history panel and demo page here._
+
+## Limitations and future improvements
+
+- Percentage rollout only, no user targeting rules
+- The demo page polls every 2 seconds. Server-sent events or WebSockets would push changes instantly.
+- Deleting a flag also deletes its audit history. A soft delete would keep it.
+- No authentication yet. The audit log records every change as `admin`.

@@ -95,8 +95,11 @@ The app is available at http://localhost:3001.
 
 ## Screenshots
 
-_Add screenshots of the dashboard, history panel and demo page here._
+![Dashboard](docs/dashboard.png)
 
+![History panel](docs/history.png)
+
+![Demo page](docs/demo.png)
 ## Limitations and future improvements
 
 - Percentage rollout only, no user targeting rules
